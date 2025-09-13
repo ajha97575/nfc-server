@@ -14,6 +14,8 @@ const authController = require("./controllers/authController")
 // Import middleware
 const { authenticateAdmin } = require("./middleware/authMiddleware")
 
+const paymentRoutes = require("./routes/payment")
+
 // Import Product model for seeding
 const Product = require("./models/Product")
 
@@ -43,6 +45,7 @@ app.get("/", (req, res) => {
       products: "/api/products",
       orders: "/api/orders",
       auth: "/api/auth",
+      payment: "/api/payment", // Added payment endpoint
     },
     timestamp: new Date().toISOString(),
   })
@@ -53,6 +56,8 @@ app.post("/api/auth/login", authController.loginAdmin)
 app.post("/api/auth/verify", authController.verifyToken)
 app.post("/api/auth/create-admin", authController.createAdmin)
 app.post("/api/auth/logout", authController.logoutAdmin)
+
+app.use("/api/payment", paymentRoutes)
 
 // Product routes - PUBLIC routes for viewing products
 app.get("/api/products", productController.getAllProducts) // Removed authenticateAdmin - now public
@@ -153,6 +158,7 @@ app.use("*", (req, res) => {
       "POST /api/orders",
       "POST /api/products/validate-bulk-stock",
       "POST /api/product/validate-stock",
+      "POST /api/payment", // Added payment endpoint
     ],
   })
 })
