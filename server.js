@@ -25,13 +25,44 @@ const PORT = process.env.PORT || 5000
 // Connect to MongoDB
 connectDB()
 
+// CORS Configuration
+const allowedOrigins = [
+  'https://client-ten-self-75.vercel.app',
+  'https://t2tap-pay-client.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  undefined // Allow requests with no origin
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
 // Middleware
-app.use(cors())
 app.use(express.json())
 
 // Logging middleware
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`)
+  console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'No Origin'}`)
   next()
 })
 
@@ -45,7 +76,11 @@ app.get("/", (req, res) => {
       products: "/api/products",
       orders: "/api/orders",
       auth: "/api/auth",
-      payment: "/api/payment", // Added payment endpoint
+      payment: "/api/payment",
+    },
+    cors: {
+      allowedOrigins: allowedOrigins.filter(origin => origin),
+      currentOrigin: req.headers.origin || 'Not specified'
     },
     timestamp: new Date().toISOString(),
   })
@@ -60,8 +95,8 @@ app.post("/api/auth/logout", authController.logoutAdmin)
 app.use("/api/payment", paymentRoutes)
 
 // Product routes - PUBLIC routes for viewing products
-app.get("/api/products", productController.getAllProducts) // Removed authenticateAdmin - now public
-app.get("/api/product/:id", productController.getProductById) // Removed authenticateAdmin - now public
+app.get("/api/products", productController.getAllProducts)
+app.get("/api/product/:id", productController.getProductById)
 
 // Product routes - ADMIN ONLY routes for managing products
 app.post("/api/products", authenticateAdmin, productController.addProduct)
@@ -73,7 +108,7 @@ app.post("/api/products/validate-bulk-stock", productController.validateBulkStoc
 app.post("/api/products/deduct-stock", productController.deductStock)
 app.post("/api/products/restore-stock", productController.restoreStock)
 
-// Order routes (protected for admin operations)
+// Order routes
 app.post("/api/orders", orderController.createOrder)
 app.get("/api/order/:id", authenticateAdmin, orderController.getOrderById)
 app.get("/api/orders", authenticateAdmin, orderController.getAllOrders)
@@ -104,6 +139,10 @@ app.get("/api/health", (req, res) => {
     status: "OK",
     message: "Server is running with MongoDB",
     database: "MongoDB",
+    cors: {
+      allowedOrigins: allowedOrigins.filter(origin => origin),
+      currentOrigin: req.headers.origin || 'Not specified'
+    },
     timestamp: new Date().toISOString(),
   })
 })
@@ -116,6 +155,10 @@ app.get("/api/db-status", async (req, res) => {
     status: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected",
     host: mongoose.connection.host,
     name: mongoose.connection.name,
+    cors: {
+      allowedOrigins: allowedOrigins.filter(origin => origin),
+      currentOrigin: req.headers.origin || 'Not specified'
+    }
   })
 })
 
@@ -143,12 +186,14 @@ app.get("/api/stats", authenticateAdmin, async (req, res) => {
   }
 })
 
+// 404 handler
 app.use("*", (req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`)
+  console.log(`404 - Route not found: ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'No Origin'}`)
   res.status(404).json({
     error: "Route not found",
     message: `The route ${req.originalUrl} does not exist`,
     method: req.method,
+    origin: req.headers.origin || 'Not specified',
     availableRoutes: [
       "GET /",
       "GET /api/health",
@@ -158,17 +203,30 @@ app.use("*", (req, res) => {
       "POST /api/orders",
       "POST /api/products/validate-bulk-stock",
       "POST /api/product/validate-stock",
-      "POST /api/payment", // Added payment endpoint
+      "POST /api/payment",
     ],
   })
 })
 
 // Error handler
 app.use((error, req, res, next) => {
-  console.error("Server Error:", error)
+  console.error("Server Error:", error.message)
+  
+  // Handle CORS errors specifically
+  if (error.message.includes('CORS')) {
+    return res.status(403).json({
+      error: "CORS Error",
+      message: error.message,
+      allowedOrigins: allowedOrigins.filter(origin => origin),
+      yourOrigin: req.headers.origin || 'Not specified',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
   res.status(500).json({
     error: "Internal Server Error",
     message: error.message,
+    timestamp: new Date().toISOString()
   })
 })
 
@@ -178,8 +236,10 @@ module.exports = app
 // Start server (for local development)
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`)
-    console.log(`Database: MongoDB`)
-    console.log(`API endpoints available at http://localhost:${PORT}/api/`)
+    console.log(`🚀 Server running on port ${PORT}`)
+    console.log(`📦 Database: MongoDB`)
+    console.log(`🌍 CORS Allowed Origins:`, allowedOrigins.filter(origin => origin))
+    console.log(`🔗 API endpoints available at http://localhost:${PORT}/api/`)
+    console.log(`🔗 Health check: http://localhost:${PORT}/api/health`)
   })
 }
